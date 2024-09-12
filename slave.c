@@ -9,7 +9,6 @@
 #define MD5_BIN_PATH "/usr/bin/md5sum"
 #define MD5_HASH_SIZE 32
 #define BUFF_SIZE 1024
-#define MD5_OUTPUT_SEPARATORS 2
 
 void process_md5_hash(char *file_path);
 size_t read_md5(char *path, int pipe_fd[], char *buff);
