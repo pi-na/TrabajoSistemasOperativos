@@ -1,38 +1,71 @@
+// list.c
 #include "list.h"
 #include <stdlib.h>
-#include <stdio.h>
+#include <string.h>
 
-typedef struct node * TList;
+typedef struct node_t {
+    char* path;
+    size_t size;
+    struct node_t* next;
+} node_t;
 
-typedef struct node{
-    char * path;
-    size_t size_mb;
-    struct node * tail;
-}TNode;
+struct list_t {
+    node_t* head;
+};
 
-typedef struct listCDT{
-    TList first;
-    TList iterator;
-}listCDT;
+struct iterator_t {
+    node_t* current;
+};
 
-
-listADT toBegin(listADT list ){
-    
-    list->iterator = list->first;
-    
+list_t* new_list() {
+    list_t* list = (list_t*)malloc(sizeof(list_t));
+    list->head = NULL;
+    return list;
 }
 
-listADT newList() {
-    listADT aux = calloc(1, sizeof(listCDT));
-    if (aux == NULL) {
-        fprintf(stderr, "Error: No se pudo asignar memoria para la nueva lista.\n");
-        return NULL;
+void add(list_t* list, const char* path, size_t size) {
+    node_t* new_node = (node_t*)malloc(sizeof(node_t));
+    new_node->path = strdup(path);
+    new_node->size = size;
+    new_node->next = NULL;
+
+    node_t** current = &(list->head);
+    while (*current != NULL && (*current)->size < size) {
+        current = &((*current)->next);
     }
-    return aux;
+    new_node->next = *current;
+    *current = new_node;
 }
 
-listADT add(listADT list, char * path, size_t size_mb){
-
+void free_list(list_t* list) {
+    node_t* current = list->head;
+    while (current != NULL) {
+        node_t* temp = current;
+        current = current->next;
+        free(temp->path);
+        free(temp);
+    }
+    free(list);
 }
 
+iterator_t* list_iterator(list_t* list) {
+    iterator_t* iterator = (iterator_t*)malloc(sizeof(iterator_t));
+    iterator->current = list->head;
+    return iterator;
+}
 
+int iterator_has_next(iterator_t* iterator) {
+    return iterator->current != NULL;
+}
+
+char * iterator_next(iterator_t* iterator) {
+    if (!iterator_has_next(iterator))
+        return NULL;
+    char *to_return = iterator->current->path;
+    iterator->current = iterator->current->next;
+    return to_return;
+}
+
+void free_iterator(iterator_t* iterator) {
+    free(iterator);
+}

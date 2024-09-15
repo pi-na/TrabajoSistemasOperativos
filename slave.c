@@ -32,20 +32,20 @@ int main(int argc, char *argv[]){
         return EXIT_FAILURE;
     }
 
-    while(!EOF_flag){
-        EOF_flag = read(STDIN_FILENO, file_path + file_path_size, 1) == 0;
+    // file1\nfile2\nfile3EOF
 
-        if(EOF_flag){            
-            if(file_path_size == 0)                 // Si encontre un EOF, podria tener un ultimo file_path para procesar
-                continue;
+    while(!EOF_flag){
+        EOF_flag = !read(STDIN_FILENO, file_path + file_path_size, 1);
+
+        if(EOF_flag && !file_path_size){    // Si encontre un EOF, podria tener un ultimo file_path para procesar
+            continue;
         } else if(file_path[file_path_size] != '\n'){
             file_path_size++;
             continue;
         }
-
+        
         // Acabo de leer una string terminada en \n o una string + EOF!
-        file_path_size++;
-        file_path[file_path_size - 1] = '\0'; 
+        file_path[file_path_size++] = '\0'; 
         process_md5_hash(file_path);
         file_path_size = 0;
     }
@@ -103,7 +103,7 @@ size_t read_md5(char *path, int pipe_fd[], char *buff){
 
     ssize_t bytes_read = read(pipe_fd[0], buff, BUFF_SIZE);
 
-    if (bytes_read == -1) {
+    if (bytes_read < 0) {
         perror("Error al leer del pipe");
         free(path);
         exit(EXIT_FAILURE);
@@ -123,6 +123,6 @@ void exec_md5(char *path, int pipe_fd[]){
     close(1);           
     dup(pipe_fd[1]);     
     close(pipe_fd[1]);   
-    char *const argv_md5[] = {MD5_BIN_PATH, path, NULL};
+    char *argv_md5[] = {MD5_BIN_PATH, path, NULL};
     execve(MD5_BIN_PATH, argv_md5, NULL);
 }
