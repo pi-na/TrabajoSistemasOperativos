@@ -8,16 +8,30 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <math.h>
+#include <sys/mman.h>
+#include <sys/stat.h>        
+#include <fcntl.h>      
+#include <semaphore.h>     
 
 #include "list.h"
 
 #define SLAVE_BIN_PATH "./slave"
+#define SHM_NAME "/shm_buff"
+#define SHM_SEM_NAME "/shm_sem"
 #define READ_END 0
 #define WRITE_END 1
 #define MAX_SLAVES 8
 #define IDEAL_LOAD 4
 #define MAX_RETRIES 5
 #define BUFF_SIZE 1024
+#define PID_DIGITS 5
+#define SLAVE_OUTPUT_DIVIDER 2
+#define MD5_HASH_SIZE 32
+#define RESULT_FILE_PATH "/shared/result.txt"
+
+#define GET_OUTOUT_SIZE(file_path_len) \
+    ((PID_DIGITS) + (MD5_HASH_SIZE) + (file_path_len) + 2 * SLAVE_OUTPUT_DIVIDER + 1)
+
 
 #define MAX(a,b) (((a) > (b)) ? (a) : (b))
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
@@ -25,8 +39,9 @@
 static int compare_ascending(size_t a, size_t b);
 void init_slaves(int total_slaves, int** slaves_duplex_fd, int slaves_duplex_fd_size, int total_jobs, list_adt file_list);
 int init_slave(int** slaves_duplex_fd, int slaves_duplex_fd_size, int new_slave_index);
-list_adt init_file_list(int argc, char* argv[]);
-
+list_adt init_file_list(int argc, char* argv[], size_t* total_output_size);
+int init_shm(char **shm_map_address, size_t shm_size);
+void init_result_file(int processed_jobs, char *shm_map_address, size_t shm_size);
 
 static int compare_ascending(size_t a, size_t b) {
     return a - b;
@@ -43,13 +58,13 @@ int main(int argc, char* argv[]){
     int total_slaves = MIN(MAX_SLAVES, total_jobs / IDEAL_LOAD + 1);
     int** slaves_duplex_fd = calloc(total_slaves, sizeof(int*));
     if(slaves_duplex_fd == NULL){
-        perror("Error al reservar memoria para slaves_duplex_fd");
+        perror("memory allocation failed");
         exit(EXIT_FAILURE);
     }
     for(int i = 0; i < total_slaves; i++){
         slaves_duplex_fd[i] = malloc(2 * sizeof(int));
         if(slaves_duplex_fd[i] == NULL){
-            perror("Error al reservar memoria para slaves_duplex_fd[i]");
+            perror("memory allocation failed");
             // Liberar la memoria ya asignada antes de salir
             for(int j = 0; j < i; j++){
                 free(slaves_duplex_fd[j]);
@@ -59,12 +74,18 @@ int main(int argc, char* argv[]){
         }
     }
 
-    int slaves_duplex_fd_size = 0;
-    list_adt file_list = init_file_list(argc, argv);
-    init_slaves(total_slaves, slaves_duplex_fd, slaves_duplex_fd_size, total_jobs, file_list);
-
     fd_set rfds;
     int files_processed = 0;
+    int slaves_duplex_fd_size = 0;
+    size_t total_output_size = 0;
+    //TODO si no se usa, eliminar
+    char * shm_map_address;
+
+    sem_t * shm_sem = sem_open(SHM_SEM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+    list_adt file_list = init_file_list(argc, argv, &total_output_size);
+    init_slaves(total_slaves, slaves_duplex_fd, slaves_duplex_fd_size, total_jobs, file_list);
+    int shm_fd = init_shm(&shm_map_address, total_output_size);
+
     while(files_processed < total_jobs){
         FD_ZERO(&rfds);
         int nfds = 0;
@@ -76,7 +97,7 @@ int main(int argc, char* argv[]){
         }
 
         if(select(nfds + 1, &rfds, NULL, NULL, NULL) == -1){
-            perror("select");
+            perror("select failed");
             exit(EXIT_FAILURE);
         }
 
@@ -86,8 +107,9 @@ int main(int argc, char* argv[]){
                 char buff[BUFF_SIZE];
                 int bytes_read;
                 if((bytes_read = read(current_slave_fd[READ_END], buff, BUFF_SIZE)) > 0){
-                    // TODO mandarlo a la SHM
-                    printf("%s\n", buff);
+                    printf("DEBUG: %s\n", buff);   
+                    write(shm_fd, buff, bytes_read);
+                    sem_post(shm_sem);
                     files_processed++;
                 }else{
                     close(current_slave_fd[READ_END]);
@@ -109,6 +131,9 @@ int main(int argc, char* argv[]){
         }     
     }
     printf("Terminé\n");
+
+    init_result_file(files_processed, shm_map_address, total_output_size);
+
     for(int i = 0; i < total_slaves; i++){
         free(slaves_duplex_fd[i]);
     }
@@ -174,13 +199,13 @@ int init_slave(int** slaves_duplex_fd, int slaves_duplex_fd_size, int new_slave_
     int pipe_fd_slave_to_master[2];
 
     if(pipe(pipe_fd_master_to_slave) == -1 || pipe(pipe_fd_slave_to_master) == -1) {
-        perror("Error al pipear");
+        perror("pipe failed");
         return -1;
     }
 
     switch(fork()) {
         case -1:
-            perror("fork");
+            perror("fork failed");
             return -1;
         case 0:
             close(pipe_fd_master_to_slave[WRITE_END]);                 // NO VOY A USAR el write end del pipe master->slave
@@ -215,11 +240,11 @@ int init_slave(int** slaves_duplex_fd, int slaves_duplex_fd_size, int new_slave_
 Recibe un array de path de files validos
 Retorna una lista con una cola de files, ordenada por tamano 
 */
-list_adt init_file_list(int argc, char* argv[]) {
+list_adt init_file_list(int argc, char* argv[], size_t* total_output_size) {
     struct stat file_stat;
     char* file_path;                              // este directory stream queda abierto y se itera llamando a readdir() o rewinddir()
     list_adt list = new_list(compare_ascending);
-    
+
     for(int i = 1; i < argc; i++) {         // Mientras queden dir-entrys para iterar...
         file_path = argv[i];
         
@@ -233,8 +258,64 @@ list_adt init_file_list(int argc, char* argv[]) {
             add(list, file_path, file_stat.st_size);
         }
         
+        *total_output_size += GET_OUTOUT_SIZE(strlen(file_path));   // +1 por el salto de linea
     }
 
     return list;
 }
 
+
+/*
+    Inicializa la memoria compartida
+    Retorna el file descriptor de la memoria compartida
+    Guarda la direccion de memoria en shm_map_address & imprime el nombre de la memoria compartida
+*/
+int init_shm(char **shm_map_address, size_t shm_size) {
+  int fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+  if (fd == -1) {
+    perror("shm_open failed");
+    exit(EXIT_FAILURE);
+  }
+
+  if (ftruncate(fd, shm_size) == -1) {
+    perror("ftruncate failed");
+    exit(EXIT_FAILURE);
+  }
+  
+  *shm_map_address = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (*shm_map_address == MAP_FAILED) {
+    perror("mmap failed");
+    exit(EXIT_FAILURE);
+  }
+
+  printf("%s", SHM_NAME);
+  fflush(stdout);
+  
+  return fd;
+}
+
+
+/*
+    Crea un archivo y vuelva los resultados guardados en la shm
+*/
+void init_result_file(int processed_jobs, char *shm_map_address, size_t shm_size) {
+    FILE * file = fopen(RESULT_FILE_PATH, "w");
+    if (file == NULL) {
+        perror("fopen failed");
+        exit(EXIT_FAILURE);
+    }
+
+    fprintf(file, "PID -- MD5 -- Filename\n");
+
+    size_t offset = 0;
+    while (processed_jobs > 0) {
+        char *current_string = shm_map_address + offset;
+        
+        fprintf(file, "%s", current_string);
+        offset += strlen(current_string) + 1;
+        
+        processed_jobs--;
+    }
+
+    fclose(file);
+}

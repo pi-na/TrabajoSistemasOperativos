@@ -9,6 +9,7 @@
 #define MD5_BIN_PATH "/usr/bin/md5sum"
 #define MD5_HASH_SIZE 32
 #define BUFF_SIZE 1024
+#define PID_DIGITS 5
 
 void process_md5_hash(char *file_path);
 size_t read_md5(char *path, int pipe_fd[], char *buff);
@@ -61,7 +62,8 @@ Recibe un file y escribe por salida estandar su hash MD5.
 void process_md5_hash(char *file_path){
     int pipe_fd[2]; 
     char md5_result[BUFF_SIZE];
-    size_t md5_result_size;
+    char to_ret[BUFF_SIZE + PID_DIGITS + 2];
+    size_t bytes_read;
 
     if(pipe(pipe_fd) == -1){
         perror("Error al pipear");
@@ -79,10 +81,20 @@ void process_md5_hash(char *file_path){
         case(0):
             exec_md5(file_path, pipe_fd);
         default:
-            md5_result_size = read_md5(file_path, pipe_fd, md5_result);
+            bytes_read = read_md5(file_path, pipe_fd, md5_result);
+            if(bytes_read == 0){
+                perror("read");
+                free(file_path);
+                exit(EXIT_FAILURE);
+            }
+            break;
     }
 
-    write(STDOUT_FILENO, md5_result, md5_result_size);
+    pid_t pid = getpid();
+    char pid_str[PID_DIGITS + 1];
+    snprintf(pid_str, sizeof(pid_str), "%05d", pid);
+    snprintf(to_ret, BUFF_SIZE + PID_DIGITS + 2, "%d  %s", pid, md5_result);
+    write(STDOUT_FILENO, to_ret, strlen(to_ret));
 }
 
 
