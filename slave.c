@@ -92,8 +92,8 @@ void process_md5_hash(char *file_path){
 
     pid_t pid = getpid();
     char pid_str[PID_DIGITS + 1];
-    snprintf(pid_str, sizeof(pid_str), "%05d", pid);
-    snprintf(to_ret, BUFF_SIZE + PID_DIGITS + 2, "%d  %s", pid, md5_result);
+    sprintf(pid_str, "%05d", pid);
+    sprintf(to_ret, "%s  %s", pid_str, md5_result);
     write(STDOUT_FILENO, to_ret, strlen(to_ret));
 }
 
