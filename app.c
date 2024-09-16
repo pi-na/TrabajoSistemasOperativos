@@ -80,6 +80,10 @@ int main(int argc, char* argv[]){
     size_t total_output_size = 0;
     //TODO si no se usa, eliminar
     char * shm_map_address;
+    char file_path[BUFF_SIZE];
+    char buff[BUFF_SIZE];
+    char processed_file_result[2 * BUFF_SIZE];
+
 
     sem_t * shm_sem = sem_open(SHM_SEM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
     list_adt file_list = init_file_list(argc, argv, &total_output_size);
@@ -104,34 +108,29 @@ int main(int argc, char* argv[]){
         for(int i = 0; i < total_slaves; i++){
             int* current_slave_fd = slaves_duplex_fd[i];
             if(current_slave_fd[READ_END] != -1 && FD_ISSET(current_slave_fd[READ_END], &rfds)){
-                char buff[BUFF_SIZE];
                 int bytes_read;
                 if((bytes_read = read(current_slave_fd[READ_END], buff, BUFF_SIZE)) > 0){
-                    printf("DEBUG: %s\n", buff);   
-                    write(shm_fd, buff, bytes_read);
+                    sprintf(processed_file_result, "%s\n", buff);
+                    write(shm_fd, processed_file_result, strlen(processed_file_result));
                     sem_post(shm_sem);
                     files_processed++;
+                    if(has_next(file_list)){
+                        sprintf(file_path,"%s\n", next(file_list));
+                        write(current_slave_fd[WRITE_END], file_path, strlen(file_path));
+                    } else {
+                        close(current_slave_fd[READ_END]);
+                        close(current_slave_fd[WRITE_END]);
+                        current_slave_fd[READ_END] = -1;
+                        current_slave_fd[WRITE_END] = -1;
+                    }
                 }else{
                     close(current_slave_fd[READ_END]);
                     close(current_slave_fd[WRITE_END]);
                     perror("Error al leer del slave. Fue ejecutado...");
                 }
-
-                if(has_next(file_list)){
-                    char path[BUFF_SIZE];
-                    sprintf(path,"%s\n", next(file_list));
-                    write(current_slave_fd[WRITE_END], path, strlen(path));
-                } else {
-                    close(current_slave_fd[READ_END]);
-                    close(current_slave_fd[WRITE_END]);
-                    current_slave_fd[READ_END] = -1;
-                    current_slave_fd[WRITE_END] = -1;
-                }
             }
         }     
     }
-    printf("Terminé\n");
-
     init_result_file(files_processed, shm_map_address, total_output_size);
 
     for(int i = 0; i < total_slaves; i++){

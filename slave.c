@@ -10,11 +10,12 @@
 #define MD5_HASH_SIZE 32
 #define BUFF_SIZE 1024
 #define PID_DIGITS 5
+#define READ_END 0
+#define WRITE_END 1
 
 void process_md5_hash(char *file_path);
-size_t read_md5(char *path, int pipe_fd[], char *buff);
+size_t read_md5(int pipe_fd[], char *buff);
 void exec_md5(char *path, int pipe_fd[]);
-
 
 int main(int argc, char *argv[]){
     if(argc > 1){
@@ -32,8 +33,6 @@ int main(int argc, char *argv[]){
         perror("Error al reservar memoria para file_path");
         return EXIT_FAILURE;
     }
-
-    // file1\nfile2\nfile3EOF
 
     while(!EOF_flag){
         EOF_flag = !read(STDIN_FILENO, file_path + file_path_size, 1);
@@ -75,26 +74,22 @@ void process_md5_hash(char *file_path){
     
     switch(forkpid = fork()){
         case(-1):
-            perror("ERROR en fork(). Terminando la ejecucion...\n");
+            perror("fork");
             free(file_path);
             exit(EXIT_FAILURE);
         case(0):
             exec_md5(file_path, pipe_fd);
-        default:
-            bytes_read = read_md5(file_path, pipe_fd, md5_result);
-            if(bytes_read == 0){
-                perror("read");
-                free(file_path);
-                exit(EXIT_FAILURE);
-            }
             break;
+        default:
+            bytes_read = read_md5(pipe_fd, md5_result);
+            if(bytes_read == 0){
+                perror("read_md5");
+                exit(EXIT_FAILURE);
+            } else {
+                sprintf(to_ret, "%05d  %s", getpid(), md5_result);
+                write(STDOUT_FILENO, to_ret, strlen(to_ret));
+            }
     }
-
-    pid_t pid = getpid();
-    char pid_str[PID_DIGITS + 1];
-    sprintf(pid_str, "%05d", pid);
-    sprintf(to_ret, "%s  %s", pid_str, md5_result);
-    write(STDOUT_FILENO, to_ret, strlen(to_ret));
 }
 
 
@@ -102,27 +97,31 @@ void process_md5_hash(char *file_path){
 Espera que el proceso hijo MD5 termine y lee el hash resultante desde el pipe.
 Deja el resultado en el buffer que recibe por parametro.
 */
-size_t read_md5(char *path, int pipe_fd[], char *buff){
+size_t read_md5(int pipe_fd[], char *buff){
     int status;
-    close(pipe_fd[1]);
+    close(pipe_fd[WRITE_END]);
     wait(&status);
 
-    if(!WIFEXITED(status)){
-        fprintf(stderr, "Hubo un error en el procesamiento del hash MD5 para el archivo %s\n", path);
-        free(path);
+    if (!WIFEXITED(status)) {
+        perror("wait");
         exit(EXIT_FAILURE);
     }
 
-    ssize_t bytes_read = read(pipe_fd[0], buff, BUFF_SIZE);
-
+    ssize_t bytes_read = read(pipe_fd[READ_END], buff, BUFF_SIZE - 1);
     if (bytes_read < 0) {
-        perror("Error al leer del pipe");
-        free(path);
+        perror("read");
         exit(EXIT_FAILURE);
     }
 
-    close(pipe_fd[0]);
-    return (size_t)bytes_read;            
+    buff[bytes_read] = '\0';
+
+    // Eliminar el posible salto de línea al final (queda basura en el buffer)
+    if (bytes_read > 0 && buff[bytes_read - 1] == '\n') {
+        buff[bytes_read - 1] = '\0';
+    }
+
+    close(pipe_fd[READ_END]);
+    return (size_t)bytes_read;
 }
 
 
@@ -131,10 +130,10 @@ Recibe un path y devuelve el md5 del archivo.
 Prepara los args y pipes para ejecutar el md5sum.
 */
 void exec_md5(char *path, int pipe_fd[]){
-    close(pipe_fd[0]);   
-    close(1);           
-    dup(pipe_fd[1]);     
-    close(pipe_fd[1]);   
+    close(pipe_fd[READ_END]);   // El proceso hijo no usa el extremo de lectura
+    dup2(pipe_fd[WRITE_END], STDOUT_FILENO);  // Redirigir stdout al pipe
+    close(pipe_fd[WRITE_END]);  // Cierra el extremo de escritura después de la redirección
+
     char *argv_md5[] = {MD5_BIN_PATH, path, NULL};
-    execve(MD5_BIN_PATH, argv_md5, NULL);
+    execve(MD5_BIN_PATH, argv_md5, NULL);  // Ejecuta md5sum
 }
