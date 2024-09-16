@@ -1,17 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/wait.h>
-
-#define MD5_BIN_PATH "/usr/bin/md5sum"
-#define MD5_HASH_SIZE 32
-#define BUFF_SIZE 1024
-#define PID_DIGITS 5
-#define READ_END 0
-#define WRITE_END 1
+#include "utilities.h"
 
 void process_md5_hash(char *file_path);
 size_t read_md5(int pipe_fd[], char *buff);

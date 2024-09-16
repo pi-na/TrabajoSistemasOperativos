@@ -1,33 +1,4 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <dirent.h>            
-#include <sys/stat.h>          
-#include <unistd.h>
-#include <string.h>
-#include <sys/wait.h>
-#include <math.h>
-#include <sys/mman.h>
-#include <sys/stat.h>        
-#include <fcntl.h>      
-#include <semaphore.h>     
-
-#include "list.h"
-
-#define SLAVE_BIN_PATH "./slave"
-#define SHM_SEM_NAME "/shm_sem"
-#define READ_END 0
-#define WRITE_END 1
-#define MAX_SLAVES 8
-#define IDEAL_LOAD 4
-#define MAX_RETRIES 5
-#define BUFF_SIZE 1024
-#define PID_DIGITS 5
-#define SLAVE_OUTPUT_DIVIDER 2
-#define MD5_HASH_SIZE 32
-#define SHM_CLOSED "/end"
-#define RESULT_FILE_PATH "/shared/result.txt"
+#include "utilities.h"
 
 int main(int argc, char* argv[]){
     char * shm_name;
