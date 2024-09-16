@@ -18,6 +18,7 @@
 #define SLAVE_BIN_PATH "./slave"
 #define SHM_NAME "/shm_buff"
 #define SHM_SEM_NAME "/shm_sem"
+#define SHM_CLOSED "/end"
 #define READ_END 0
 #define WRITE_END 1
 #define MAX_SLAVES 8
@@ -32,7 +33,6 @@
 #define GET_OUTOUT_SIZE(file_path_len) \
     ((PID_DIGITS) + (MD5_HASH_SIZE) + (file_path_len) + 2 * SLAVE_OUTPUT_DIVIDER + 1)
 
-
 #define MAX(a,b) (((a) > (b)) ? (a) : (b))
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
@@ -46,7 +46,6 @@ void init_result_file(int processed_jobs, char *shm_map_address, size_t shm_size
 static int compare_ascending(size_t a, size_t b) {
     return a - b;
 }
-
 
 int main(int argc, char* argv[]){
     if (argc < 2) {
@@ -84,11 +83,18 @@ int main(int argc, char* argv[]){
     char buff[BUFF_SIZE];
     char processed_file_result[2 * BUFF_SIZE];
 
-
     sem_t * shm_sem = sem_open(SHM_SEM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+    if(shm_sem == SEM_FAILED){
+        perror("sem_open");
+        exit(EXIT_FAILURE);
+    }
+
     list_adt file_list = init_file_list(argc, argv, &total_output_size);
     init_slaves(total_slaves, slaves_duplex_fd, slaves_duplex_fd_size, total_jobs, file_list);
     int shm_fd = init_shm(&shm_map_address, total_output_size);
+
+    printf("%s\n%zu\n%s\n", SHM_NAME, total_output_size, SHM_SEM_NAME);
+    fflush(stdout);
 
     while(files_processed < total_jobs){
         FD_ZERO(&rfds);
@@ -133,9 +139,16 @@ int main(int argc, char* argv[]){
     }
     init_result_file(files_processed, shm_map_address, total_output_size);
 
+    write(shm_fd, SHM_CLOSED, strlen(SHM_CLOSED));
+    close(shm_fd);
+    sem_post(shm_sem);
+    //TODO DUDOSO PUEDE CAUSAR FALLOS
+    sem_close(shm_sem);
+
     for(int i = 0; i < total_slaves; i++){
         free(slaves_duplex_fd[i]);
     }
+
     free(slaves_duplex_fd);
     free_list(file_list);
     return EXIT_SUCCESS; 
@@ -287,8 +300,7 @@ int init_shm(char **shm_map_address, size_t shm_size) {
     exit(EXIT_FAILURE);
   }
 
-  printf("%s", SHM_NAME);
-  fflush(stdout);
+    fflush(stdout);
   
   return fd;
 }
