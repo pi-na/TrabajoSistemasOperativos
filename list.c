@@ -1,71 +1,93 @@
-// list.c
 #include "list.h"
 #include <stdlib.h>
-#include <string.h>
+#include <stdio.h>
 
-typedef struct node_t {
-    char* path;
-    size_t size;
-    struct node_t* next;
-} node_t;
+typedef struct node * list_type;
 
-struct list_t {
-    node_t* head;
-};
+typedef struct node{
+    char * path;
+    size_t size_mb;
+    struct node * tail;
+} node_type;
 
-struct iterator_t {
-    node_t* current;
-};
+typedef struct list_cdt{
+    list_type first;
+    list_type iterator;
+    int (*compare)(size_t, size_t);
+} list_cdt;
 
-list_t* new_list() {
-    list_t* list = (list_t*)malloc(sizeof(list_t));
-    list->head = NULL;
+list_adt new_list(int (*compare)(size_t, size_t)) {
+    list_adt aux = calloc(1, sizeof(list_cdt));
+    if (aux == NULL) {
+        fprintf(stderr, "Error, no se pudo asignar memoria para el list.\n");
+        return NULL;
+    }
+    aux->compare = compare;
+    return aux;
+}
+
+static list_type recursive_add(list_type list, char * path, size_t size_mb, int (*compare)(size_t, size_t)){
+    if (list == NULL || compare(list->size_mb, size_mb) >= 0){
+        list_type aux = malloc(sizeof(node_type));
+        if (aux == NULL) {
+            fprintf(stderr, "Error, no se pudo asignar memoria para el nuevo list.\n");
+            return NULL;
+        }
+        aux->path = path;
+        aux->size_mb = size_mb;
+        aux->tail = list;
+        return aux;
+    }
+
+    if (compare(list->size_mb, size_mb) < 0){
+        list->tail = recursive_add(list->tail, path, size_mb, compare);
+    }
+
     return list;
 }
 
-void add(list_t* list, const char* path, size_t size) {
-    node_t* new_node = (node_t*)malloc(sizeof(node_t));
-    new_node->path = strdup(path);
-    new_node->size = size;
-    new_node->next = NULL;
-
-    node_t** current = &(list->head);
-    while (*current != NULL && (*current)->size < size) {
-        current = &((*current)->next);
+void add(list_adt list, char * path, size_t size_mb){
+    list_type aux = calloc(1, sizeof(node_type));
+    if (aux == NULL) {
+        fprintf(stderr, "Errorrrr, no se pudo asignar memoriaaa\n");
+        return;
     }
-    new_node->next = *current;
-    *current = new_node;
+    aux->path = path;
+    
+    list->first = recursive_add(list->first, path, size_mb, list->compare);
+
 }
 
-void free_list(list_t* list) {
-    node_t* current = list->head;
-    while (current != NULL) {
-        node_t* temp = current;
-        current = current->next;
-        free(temp->path);
-        free(temp);
+void to_begin(list_adt list){
+    list->iterator = list->first;
+}
+
+
+int has_next(list_adt list){
+   return list->iterator != NULL;
+}
+
+char * next(list_adt list){
+    
+    if (has_next(list)){
+        char * path = list->iterator->path;
+        list->iterator = list->iterator->tail;
+        return path;
+    }else {
+        fprintf(stderr, "No such path!\nAborting...");
+        exit(1);
     }
+}
+
+void free_list(list_adt list){
+    list_type actual = list->first;
+    list_type next;
+
+    while(actual != NULL){
+        next = actual->tail;
+        free(actual);
+        actual = next;
+    }
+
     free(list);
-}
-
-iterator_t* list_iterator(list_t* list) {
-    iterator_t* iterator = (iterator_t*)malloc(sizeof(iterator_t));
-    iterator->current = list->head;
-    return iterator;
-}
-
-int iterator_has_next(iterator_t* iterator) {
-    return iterator->current != NULL;
-}
-
-char * iterator_next(iterator_t* iterator) {
-    if (!iterator_has_next(iterator))
-        return NULL;
-    char *to_return = iterator->current->path;
-    iterator->current = iterator->current->next;
-    return to_return;
-}
-
-void free_iterator(iterator_t* iterator) {
-    free(iterator);
 }
