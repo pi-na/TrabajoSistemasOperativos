@@ -1,3 +1,5 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++, C#, and Java: https://pvs-studio.com
 #include "utilities.h"
 
 int main(int argc, char* argv[]){
@@ -12,24 +14,24 @@ int main(int argc, char* argv[]){
     } else{
         char buffer[BUFF_SIZE];
 
-        if (scanf("%s", buffer) != 1) {
+        if (scanf("%1023s", buffer) != 1) {
             fprintf(stderr, "Error al leer el nombre de la memoria compartida\n");
             exit(EXIT_FAILURE);
         }
         shm_name = strdup(buffer);
 
-        if (scanf("%s", buffer) != 1 || (shm_size = strtoull(buffer, NULL, 10)) == 0) {
+        if (scanf("%1023s", buffer) != 1 || (shm_size = strtoull(buffer, NULL, 10)) == 0) {
             fprintf(stderr, "Error al leer el tamaño de la memoria compartida\n");
             exit(EXIT_FAILURE);
         }
 
-        if (scanf("%s", buffer) != 1) {
+        if (scanf("%1023s", buffer) != 1) {
             fprintf(stderr, "Error al leer el nombre del semáforo\n");
             exit(EXIT_FAILURE);
         }
         sem_name = strdup(buffer);
 
-        if (shm_name == NULL || sem_name == NULL || shm_size == 0) {
+        if (shm_name == NULL || sem_name == NULL) {
             fprintf(stderr, "Error al leer los datos de entrada\n");
             exit(EXIT_FAILURE);
         }

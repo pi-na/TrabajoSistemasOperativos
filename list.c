@@ -1,3 +1,5 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++, C#, and Java: https://pvs-studio.com
 #include "list.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -47,15 +49,18 @@ static list_type recursive_add(list_type list, char * path, size_t size_mb, int 
 }
 
 void add(list_adt list, char * path, size_t size_mb){
-    list_type aux = calloc(1, sizeof(node_type));
+    list_type aux = malloc(sizeof(node_type));
     if (aux == NULL) {
-        fprintf(stderr, "Errorrrr, no se pudo asignar memoriaaa\n");
+        fprintf(stderr, "Error, no se pudo asignar memoria para el nuevo nodo.\n");
         return;
     }
     aux->path = path;
-    
+    aux->size_mb = size_mb;
+    aux->tail = NULL;
+
     list->first = recursive_add(list->first, path, size_mb, list->compare);
 
+    free(aux);
 }
 
 void to_begin(list_adt list){

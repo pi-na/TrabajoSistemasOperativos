@@ -1,3 +1,5 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++, C#, and Java: https://pvs-studio.com
 #include "utilities.h"
 
 static int compare_ascending(size_t a, size_t b);
@@ -41,7 +43,6 @@ int main(int argc, char* argv[]){
     int files_processed = 0;
     int slaves_duplex_fd_size = 0;
     size_t total_output_size = 0;
-    //TODO si no se usa, eliminar
     char * shm_map_address;
     char file_path[BUFF_SIZE];
     char buff[BUFF_SIZE];
@@ -106,7 +107,6 @@ int main(int argc, char* argv[]){
     write(shm_fd, SHM_CLOSED, strlen(SHM_CLOSED));
     close(shm_fd);
     sem_post(shm_sem);
-    //TODO DUDOSO PUEDE CAUSAR FALLOS
     sem_close(shm_sem);
 
     for(int i = 0; i < total_slaves; i++){
@@ -117,29 +117,6 @@ int main(int argc, char* argv[]){
     free_list(file_list);
     return EXIT_SUCCESS; 
 }
-
-//AHORA
-/*
-    Necesito saber el PID? Voy a averiguar si lo necesito para el select para decidir si 
-    el slaves_duplex_fd es un array de struct slave_data o si directo guardo los FD
-    por lo que veo en el man de select, puedo directo usar los FD: recorro el array y le hago IS_SET a todo y si tengo algo para leer lo mando al buffer de shm
-*/
-
-/*
-    quiero implementar el proceso de levantar los slaves y de hacer select() para esperar a que escriban en sus pipes
-    > levanto (argc - 1) / 2 slaves
-        > Esto implica levantar sus respectivos pipes ( CERRANDO LOS NECESARIOS! )
-        > Supongo que hago un for y voy haciendo muchos fork, necesito cargar los PID en un array?
-          quizas necesito mapear pid de los hijos a los pipes indicados. debo investigar como funciona select()!
-        > Por ahora apenas me contesta un slave imprimo su output
-          si funcionan bien los slaves, no deberia tener problema "interfaceando" con ellos
-        > en el slave debo cerrar todos los pipes menos el indicado
-          uso el array de todos los pipes, lo recorro y cierro todos
-          ANTES de hacer el execve()
-    
-    PROFE DICE Lo que tenes que hacer  cuando select(2) retorna, es iterar sobre cada fd_set (readfds y writefds) llamando a FD_ISSET() para cada fd que te interesa    
-*/
-
 
 /*
     Retorna un array de pipes, donde cada pipe[i] es un array de 2 enteros, siendo el primero el write end y el segundo el read end
@@ -184,8 +161,8 @@ int init_slave(int** slaves_duplex_fd, int slaves_duplex_fd_size, int new_slave_
             perror("fork failed");
             return -1;
         case 0:
-            close(pipe_fd_master_to_slave[WRITE_END]);                 // NO VOY A USAR el write end del pipe master->slave
-            close(pipe_fd_slave_to_master[READ_END]);                  // NO VOY A USAR el read end del pipe slave->master
+            close(pipe_fd_master_to_slave[WRITE_END]);                 
+            close(pipe_fd_slave_to_master[READ_END]);                  
             dup2(pipe_fd_master_to_slave[READ_END], STDIN_FILENO);
             dup2(pipe_fd_slave_to_master[WRITE_END], STDOUT_FILENO);
             close(pipe_fd_master_to_slave[READ_END]);
@@ -229,7 +206,6 @@ list_adt init_file_list(int argc, char* argv[], size_t* total_output_size) {
             perror("stat");
         }
 
-        // add(list, file_path, file_stat.st_size);        
         if(!S_ISDIR(file_stat.st_mode)){
             add(list, file_path, file_stat.st_size);
         }

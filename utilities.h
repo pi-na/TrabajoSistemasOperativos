@@ -30,7 +30,7 @@
 #define PID_DIGITS 5
 #define SLAVE_OUTPUT_DIVIDER 2
 #define MD5_HASH_SIZE 32
-#define RESULT_FILE_PATH "/shared/result.txt"
+#define RESULT_FILE_PATH "result.txt"
 
 #define GET_OUTOUT_SIZE(file_path_len) \
     ((PID_DIGITS) + (MD5_HASH_SIZE) + (file_path_len) + 2 * SLAVE_OUTPUT_DIVIDER + 1)
