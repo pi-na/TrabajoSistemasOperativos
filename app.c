@@ -80,6 +80,7 @@ int main(int argc, char* argv[]){
             int* current_slave_fd = slaves_duplex_fd[i];
             if(current_slave_fd[READ_END] != -1 && FD_ISSET(current_slave_fd[READ_END], &rfds)){
                 int bytes_read;
+                memset(buff, 0, BUFF_SIZE);
                 if((bytes_read = read(current_slave_fd[READ_END], buff, BUFF_SIZE)) > 0){
                     sprintf(processed_file_result, "%s\n", buff);
                     write(shm_fd, processed_file_result, strlen(processed_file_result));

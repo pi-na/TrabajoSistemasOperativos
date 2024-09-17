@@ -1,2 +1,5 @@
 PID -- MD5 -- Filename
-00565  d8fdad07a7665b225f767b2103deb7b4  /shared/list.c
+00282  9de33f7eb5051b95f43edfd62fcf904d  /shared/slave.c
+00280  9df2f58834750e4f9afadd3a170f3aec  /shared/makefile
+00280  d7ed7ef87070bdae93262f3684c645f5  /shared/tp1.pdf
+00282  9de33f7eb5051b95f43edfd62fcf904d  /shared/slave.c
