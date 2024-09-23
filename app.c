@@ -3,8 +3,8 @@
 #include "utilities.h"
 
 static int compare_ascending(size_t a, size_t b);
-void init_slaves(int total_slaves, int** slaves_duplex_fd, int slaves_duplex_fd_size, int total_jobs, list_adt file_list);
-int init_slave(int** slaves_duplex_fd, int slaves_duplex_fd_size, int new_slave_index);
+void init_slaves(int total_slaves, int** slaves_duplex_fd, int** SECONDARY_slaves_duplex_fd, int total_jobs, list_adt file_list);
+int init_slave(int** slaves_duplex_fd, int** SECONDARY_slaves_duplex_fd, int new_slave_index);
 list_adt init_file_list(int argc, char* argv[], size_t* total_output_size);
 int init_shm(char **shm_map_address, size_t shm_size);
 void init_result_file(int processed_jobs, char *shm_map_address, size_t shm_size);
@@ -39,9 +39,26 @@ int main(int argc, char* argv[]){
         }
     }
 
+    int** SECONDARY_slaves_duplex_fd = calloc(total_slaves, sizeof(int*));
+    if(SECONDARY_slaves_duplex_fd == NULL){
+        perror("memory allocation failed");
+        exit(EXIT_FAILURE);
+    }
+    for(int i = 0; i < total_slaves; i++){
+        SECONDARY_slaves_duplex_fd[i] = malloc(2 * sizeof(int));
+        if(SECONDARY_slaves_duplex_fd[i] == NULL){
+            perror("memory allocation failed");
+            // Liberar la memoria ya asignada antes de salir
+            for(int j = 0; j < i; j++){
+                free(SECONDARY_slaves_duplex_fd[j]);
+            }
+            free(SECONDARY_slaves_duplex_fd);
+            exit(EXIT_FAILURE);
+        }
+    }
+
     fd_set rfds;
     int files_processed = 0;
-    int slaves_duplex_fd_size = 0;
     size_t total_output_size = 0;
     char * shm_map_address;
     char file_path[BUFF_SIZE];
@@ -55,7 +72,7 @@ int main(int argc, char* argv[]){
     }
 
     list_adt file_list = init_file_list(argc, argv, &total_output_size);
-    init_slaves(total_slaves, slaves_duplex_fd, slaves_duplex_fd_size, total_jobs, file_list);
+    init_slaves(total_slaves, slaves_duplex_fd, SECONDARY_slaves_duplex_fd, total_jobs, file_list);
     int shm_fd = init_shm(&shm_map_address, total_output_size);
 
     printf("%s\n%zu\n%s\n", SHM_NAME, total_output_size, SHM_SEM_NAME);
@@ -112,9 +129,11 @@ int main(int argc, char* argv[]){
 
     for(int i = 0; i < total_slaves; i++){
         free(slaves_duplex_fd[i]);
+        free(SECONDARY_slaves_duplex_fd[i]);
     }
 
     free(slaves_duplex_fd);
+    free(SECONDARY_slaves_duplex_fd);
     free_list(file_list);
     return EXIT_SUCCESS; 
 }
@@ -123,10 +142,10 @@ int main(int argc, char* argv[]){
     Retorna un array de pipes, donde cada pipe[i] es un array de 2 enteros, siendo el primero el write end y el segundo el read end
     El indice del array es representativo de cada slave
 */
-void init_slaves(int total_slaves, int** slaves_duplex_fd, int slaves_duplex_fd_size, int total_jobs, list_adt file_list){
+void init_slaves(int total_slaves, int** slaves_duplex_fd, int** SECONDARY_slaves_duplex_fd, int total_jobs, list_adt file_list){
     for(int i = 0; i < total_slaves; i++){
         int retries = 0;
-        while(init_slave(slaves_duplex_fd, slaves_duplex_fd_size, i) && 
+        while(init_slave(slaves_duplex_fd, SECONDARY_slaves_duplex_fd, i) && 
               retries++ < MAX_RETRIES);
         if(retries == MAX_RETRIES){
             fprintf(stderr, "Error al inicializar el slave %d\n", i);
@@ -148,7 +167,7 @@ void init_slaves(int total_slaves, int** slaves_duplex_fd, int slaves_duplex_fd_
     Levanta 2 pipes. Retorna 0 si todo sale bien, -1 si hubo error
     Llena un array de 2 enteros siendo el primero el FD del write end del pipe n1 y el segundo el FD del read end del pipe n2
 */
-int init_slave(int** slaves_duplex_fd, int slaves_duplex_fd_size, int new_slave_index){
+int init_slave(int** slaves_duplex_fd, int ** SECONDARY_slaves_duplex_fd, int new_slave_index){
     int pipe_fd_master_to_slave[2];
     int pipe_fd_slave_to_master[2];
 
@@ -156,6 +175,12 @@ int init_slave(int** slaves_duplex_fd, int slaves_duplex_fd_size, int new_slave_
         perror("pipe failed");
         return -1;
     }
+
+    SECONDARY_slaves_duplex_fd[new_slave_index][READ_END] = pipe_fd_master_to_slave[READ_END];
+    SECONDARY_slaves_duplex_fd[new_slave_index][WRITE_END] = pipe_fd_slave_to_master[WRITE_END];
+
+    slaves_duplex_fd[new_slave_index][READ_END] = pipe_fd_slave_to_master[READ_END];
+    slaves_duplex_fd[new_slave_index][WRITE_END] = pipe_fd_master_to_slave[WRITE_END];
 
     switch(fork()) {
         case -1:
@@ -169,11 +194,12 @@ int init_slave(int** slaves_duplex_fd, int slaves_duplex_fd_size, int new_slave_
             close(pipe_fd_master_to_slave[READ_END]);
             close(pipe_fd_slave_to_master[WRITE_END]);
             
-            for(int i = 0; i < slaves_duplex_fd_size; i++) {
-                if(i != new_slave_index) {
-                    close(slaves_duplex_fd[i][READ_END]);
-                    close(slaves_duplex_fd[i][WRITE_END]);
-                }
+            for(int i = 0; i < new_slave_index; i++) {
+                close(slaves_duplex_fd[i][READ_END]);
+                close(slaves_duplex_fd[i][WRITE_END]);
+
+                close(SECONDARY_slaves_duplex_fd[i][READ_END]);
+                close(SECONDARY_slaves_duplex_fd[i][WRITE_END]);
             }
             
             char* argv_slave[] = {SLAVE_BIN_PATH, NULL};
@@ -182,8 +208,8 @@ int init_slave(int** slaves_duplex_fd, int slaves_duplex_fd_size, int new_slave_
         default:
             close(pipe_fd_master_to_slave[READ_END]);
             close(pipe_fd_slave_to_master[WRITE_END]);
-            slaves_duplex_fd[new_slave_index][READ_END] = pipe_fd_slave_to_master[READ_END];
-            slaves_duplex_fd[new_slave_index][WRITE_END] = pipe_fd_master_to_slave[WRITE_END];
+            // slaves_duplex_fd[new_slave_index][READ_END] = pipe_fd_slave_to_master[READ_END];
+            // slaves_duplex_fd[new_slave_index][WRITE_END] = pipe_fd_master_to_slave[WRITE_END];
             break;
     }
     return 0;
